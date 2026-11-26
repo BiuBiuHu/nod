@@ -711,44 +711,73 @@ test('the task title editor keeps its draft when Escape cancels an IME candidate
       if (value) Object.defineProperty(globalThis, key, value);
       else Reflect.deleteProperty(globalThis, key);
   });
+  let saved = 0;
   const { InlineName } = await import('../src/web/components/inline-name.tsx');
   await act(async () =>
     root.render(
       createElement(InlineName, {
         value: 'Synthetic title',
         label: 'task title',
-        save: async () => {},
+        save: async () => {
+          saved++;
+        },
       }),
     ),
   );
   const document = dom.window.document;
   await act(async () => document.querySelector<HTMLElement>('button.inline-name')!.click());
   const input = document.querySelector('input')!;
-  const press = async (init: KeyboardEventInit) =>
+  const setValue = Object.getOwnPropertyDescriptor(
+    dom.window.HTMLInputElement.prototype,
+    'value',
+  )!.set!;
+  const type = async (value: string) =>
+    act(async () => {
+      setValue.call(input, value);
+      input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    });
+  const press = async (key: string, init: KeyboardEventInit = {}) =>
     act(async () => {
       input.dispatchEvent(
         new dom.window.KeyboardEvent('keydown', {
-          key: 'Escape',
+          key,
           bubbles: true,
           cancelable: true,
           ...init,
         }),
       );
     });
-  const setValue = Object.getOwnPropertyDescriptor(
-    dom.window.HTMLInputElement.prototype,
-    'value',
-  )!.set!;
-  await act(async () => {
-    setValue.call(input, 'Synthetic draft');
-    input.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
-  });
+  const compose = async (typeName: string, data: string) =>
+    act(async () => {
+      input.dispatchEvent(
+        new dom.window.CompositionEvent(typeName, {
+          bubbles: true,
+          cancelable: true,
+          data,
+        }),
+      );
+    });
+  await type('Synthetic draft');
+  await compose('compositionstart', '');
+  await type('Synthetic draft nihao');
+  await compose('compositionupdate', 'nihao');
+  assert.equal(document.querySelector('input')?.value, 'Synthetic draft nihao');
+  await press('Escape', { isComposing: true, keyCode: 229 });
+  assert.equal(document.querySelector('input')?.value, 'Synthetic draft nihao');
+  await press('Enter', { isComposing: true, keyCode: 229 });
+  assert.equal(saved, 0);
+  assert.equal(document.querySelector('input')?.value, 'Synthetic draft nihao');
   for (const composing of [{ isComposing: true }, { keyCode: 229 }]) {
-    await press(composing);
-    assert.equal(document.querySelector('input')?.value, 'Synthetic draft');
+    await press('Escape', composing);
+    assert.equal(document.querySelector('input')?.value, 'Synthetic draft nihao');
   }
-  await press({});
+  await compose('compositionend', '');
+  await type('Synthetic draft');
+  assert.equal(document.querySelector('input')?.value, 'Synthetic draft');
+  assert.equal(saved, 0);
+  await press('Escape');
   assert.equal(document.querySelector('input'), null);
+  assert.equal(saved, 0);
 });
 
 test('Join sends fixed answers only with a matching confirmed share', async (t) => {

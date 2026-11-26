@@ -4247,10 +4247,23 @@ test(
     await click('#open-private');
     await settle(() => Boolean(view.document.querySelector('input[name="password"]')));
     const password = view.document.querySelector<HTMLInputElement>('input[name="password"]')!;
+    const win = view.document.defaultView!;
+    await act(async () => {
+      password.dispatchEvent(
+        new win.CompositionEvent('compositionstart', { bubbles: true, cancelable: true, data: '' }),
+      );
+      password.dispatchEvent(
+        new win.CompositionEvent('compositionupdate', {
+          bubbles: true,
+          cancelable: true,
+          data: 'nihao',
+        }),
+      );
+    });
     for (const composing of [{ isComposing: true }, { keyCode: 229 }]) {
       await act(async () => {
         password.dispatchEvent(
-          new view.document.defaultView!.KeyboardEvent('keydown', {
+          new win.KeyboardEvent('keydown', {
             key: 'Escape',
             bubbles: true,
             cancelable: true,
@@ -4260,6 +4273,12 @@ test(
       });
       assert.ok(view.document.querySelector('input[name="password"]'));
     }
+    await act(async () => {
+      password.dispatchEvent(
+        new win.CompositionEvent('compositionend', { bubbles: true, cancelable: true, data: '' }),
+      );
+    });
+    assert.ok(view.document.querySelector('input[name="password"]'));
     password.value = 'synthetic-unsent-password';
     await click('.private-entry-toolbar button');
     assert.equal(view.document.querySelector('input[name="password"]'), null);
